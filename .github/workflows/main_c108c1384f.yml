@@ -1,0 +1,86 @@
+name: Updater
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  schedule:
+    - cron: '0 4 * * *'
+  repository_dispatch:
+    types: manually
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
+        #fetch-depth: 0 # otherwise, you will failed to push refs to dest repo
+        fetch-depth: 1
+        repository: ${{ secrets.UPSTREAM_SOURCE_C108C1384F }}
+        token: ${{ secrets.UPSTREAM_PAT_C108C1384F }}
+        ref: ${{ secrets.UPSTREAM_BRANCH_C108C1384F }}
+        #submodules: recursive
+    - name: Checkout Submodules
+      run: |
+        git config --global http.https://github.com/.extraheader "Authorization: Basic $(echo -n "${{ secrets.UPSTREAM_ACTOR_C108C1384F }}:${{ secrets.UPSTREAM_PAT_C108C1384F }}" | base64 --wrap=0)"
+        git submodule sync --recursive
+        &>/dev/null git -c protocol.version=2 submodule update --init --force --depth=1 --recursive
+        git config --global --unset http.https://github.com/.extraheader
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.6.x'
+    - uses: actions/cache@v2
+      id: cache
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Install dependencies
+      # if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libyaml-dev
+        &>/dev/null python -m pip install -r requirements.txt
+    - name: Main
+      env:
+        PAT: ${{ secrets.UPSTREAM_PAT_C108C1384F }}
+      run: |
+        &>/dev/null python ${{ secrets.UPSTREAM_ENTRYPOINT_C108C1384F }}
+    - name: Commit Upstream Files
+      id: commit_upstream
+      run: |
+        git config --local user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+        git config --local user.name "Github Actions Bot - ${GITHUB_ACTOR}"
+        git add .
+        &>/dev/null git commit -m "Updated: $(date +%d.%m.%Y)" && echo "::set-output name=committed::1" || echo "Nothing to update"
+    - name: Push Changes to Upstream
+      run: |
+        remote_repo="https://${{ secrets.UPSTREAM_ACTOR_C108C1384F }}:${{ secrets.UPSTREAM_PAT_C108C1384F }}@github.com/${{ secrets.UPSTREAM_SOURCE_C108C1384F }}.git"
+        git push "${remote_repo}" HEAD:${{ secrets.UPSTREAM_BRANCH_C108C1384F }}
+    - uses: actions/checkout@v2
+      with:
+        persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
+        #fetch-depth: 0 # otherwise, you will failed to push refs to dest repo
+        fetch-depth: 0
+    - name: Log
+      run: |
+        echo "Updated: $(date +%d.%m.%Y)" > log.log
+    - name: Commit files
+      id: commit
+      run: |
+        git config --local user.email "${GITHUB_ACTOR}-bot@users.noreply.github.com"
+        git config --local user.name "Github Actions Bot"
+        git add log.log
+        git commit -m "Updated: $(date +%d.%m.%Y)" && echo "::set-output name=committed::1" || echo "Nothing to update"
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
