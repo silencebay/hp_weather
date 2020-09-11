@@ -17,18 +17,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-      with:
-        persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
-        #fetch-depth: 0 # otherwise, you will failed to push refs to dest repo
-        fetch-depth: 1
-        repository: ${{ secrets.UPSTREAM_SOURCE_C108C1384F }}
-        token: ${{ secrets.UPSTREAM_PAT_C108C1384F }}
-        ref: ${{ secrets.UPSTREAM_BRANCH_C108C1384F }}
-        #submodules: recursive
+    - name: Get Upstream github actor
+      run: |
+        github_actor=$(echo ${{ secrets.UPSTREAM_SOURCE_C108C1384F }} | cut -d/ -f1)
+        echo '::set-env name=UPSTREAM_ACTOR_C108C1384F::$github_actor'
+    # - uses: actions/checkout@v2
+    #   with:
+    #     persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
+    #     #fetch-depth: 0 # otherwise, you will failed to push refs to dest repo
+    #     fetch-depth: 1
+    #     repository: ${{ secrets.UPSTREAM_SOURCE_C108C1384F }}
+    #     token: ${{ secrets.UPSTREAM_PAT_C108C1384F }}
+    #     ref: ${{ secrets.UPSTREAM_BRANCH_C108C1384F }}
+    #     #submodules: recursive
+    - name: Set up auth
+      run: |
+        git config --global http.https://github.com/.extraheader "Authorization: Basic $(echo -n "${UPSTREAM_ACTOR_C108C1384F}:${{ secrets.UPSTREAM_PAT_C108C1384F }}" | base64 --wrap=0)"
+    - name: Checkout source
+      run: |
+        git version
+        git clone -b ${{ secrets.UPSTREAM_BRANCH_C108C1384F }} --depth 1 https://github.com/${{ secrets.UPSTREAM_SOURCE_C108C1384F }} $GITHUB_WORKSPACE
+        git config --local gc.auto 0
     - name: Checkout Submodules
       run: |
-        git config --global http.https://github.com/.extraheader "Authorization: Basic $(echo -n "${{ secrets.UPSTREAM_ACTOR_C108C1384F }}:${{ secrets.UPSTREAM_PAT_C108C1384F }}" | base64 --wrap=0)"
         git submodule sync --recursive
         &>/dev/null git -c protocol.version=2 submodule update --init --force --depth=1 --recursive
         git config --global --unset http.https://github.com/.extraheader
@@ -63,8 +74,7 @@ jobs:
         &>/dev/null git commit -m "Updated: $(date +%d.%m.%Y)" && echo "::set-output name=committed::1" || echo "Nothing to update"
     - name: Push Changes to Upstream
       run: |
-        remote_repo="https://${{ secrets.UPSTREAM_ACTOR_C108C1384F }}:${{ secrets.UPSTREAM_PAT_C108C1384F }}@github.com/${{ secrets.UPSTREAM_SOURCE_C108C1384F }}.git"
-        git push "${remote_repo}" HEAD:${{ secrets.UPSTREAM_BRANCH_C108C1384F }}
+        git push "https://${UPSTREAM_ACTOR_C108C1384F}:${{ secrets.UPSTREAM_PAT_C108C1384F }}@github.com/${{ secrets.UPSTREAM_SOURCE_C108C1384F }}.git" HEAD:${{ secrets.UPSTREAM_BRANCH_C108C1384F }}
     - uses: actions/checkout@v2
       with:
         persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
